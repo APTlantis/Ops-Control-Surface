@@ -1,0 +1,25 @@
+[package]
+name = "aptlantis_project_kanban"
+version = "0.1.0"
+description = "Aptlantis local project Kanban"
+authors = ["Aptlantis"]
+edition = "2021"
+
+[lib]
+name = "aptlantis_project_kanban_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+dirs-next = "2"
+open = "5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+thiserror = "2"
+toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
