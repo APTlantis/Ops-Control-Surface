@@ -81,11 +81,20 @@ function computeMetrics(data: BoardData, projects = data.projects): BoardMetrics
       project.requirements.some((requirement) => requirement.blocking && !["satisfied", "waived"].includes(requirement.status)),
     ).length,
     missingEvidence: projects.filter((project) => !project.documents.some((document) => document.kind === "evidence" && document.exists)).length,
+    liveProjects: projects.filter((project) => project.source !== "sample").length,
+    sampleProjects: projects.filter((project) => project.source === "sample").length,
     storageUsedGb: data.workspace.storageUsedGb,
   };
 }
 
-function filterProjects(projects: Project[], search: string, statusFilter: ProjectStatus | "all", tagFilter: string | "all", readyOnly: boolean) {
+function filterProjects(
+  projects: Project[],
+  search: string,
+  statusFilter: ProjectStatus | "all",
+  tagFilter: string | "all",
+  readyOnly: boolean,
+  sourceFilter: "all" | "live" | "sample",
+) {
   const query = search.trim().toLowerCase();
   return projects.filter((project) => {
     const matchesSearch =
@@ -97,7 +106,9 @@ function filterProjects(projects: Project[], search: string, statusFilter: Proje
     const matchesStatus = statusFilter === "all" || project.status === statusFilter;
     const matchesTag = tagFilter === "all" || project.tags.includes(tagFilter);
     const matchesReady = !readyOnly || project.releases.some((release) => release.readiness >= 70);
-    return matchesSearch && matchesStatus && matchesTag && matchesReady;
+    const matchesSource =
+      sourceFilter === "all" || (sourceFilter === "live" && project.source !== "sample") || (sourceFilter === "sample" && project.source === "sample");
+    return matchesSearch && matchesStatus && matchesTag && matchesReady && matchesSource;
   });
 }
 
@@ -131,6 +142,8 @@ export function App() {
     setStatusFilter,
     tagFilter,
     setTagFilter,
+    sourceFilter,
+    setSourceFilter,
   } = useUiStore();
 
   const boardQuery = useQuery({
@@ -223,7 +236,7 @@ export function App() {
   const activeBoard = boards.find((board) => board.id === activeBoardId) ?? boards[0];
   const activeBoardIndex = Math.max(0, boards.findIndex((board) => board.id === activeBoard.id));
   const boardProjects = data?.projects.filter((project) => project.boardId === activeBoard.id) ?? [];
-  const projects = data ? filterProjects(boardProjects, search, statusFilter, tagFilter, readyOnly) : [];
+  const projects = data ? filterProjects(boardProjects, search, statusFilter, tagFilter, readyOnly, sourceFilter) : [];
   const selectedProject = boardProjects.find((project) => project.id === selectedProjectId) ?? boardProjects[0] ?? null;
   const compareProject =
     compareProjectId && compareProjectId !== selectedProject?.id
@@ -231,7 +244,7 @@ export function App() {
       : null;
   const metrics = data ? computeMetrics(data, boardProjects) : null;
   const allTags = Array.from(new Set([...(data?.tagDefinitions.map((tag) => tag.tag) ?? []), ...(data?.projects.flatMap((project) => project.tags) ?? [])])).sort();
-  const hasFilters = Boolean(search.trim()) || statusFilter !== "all" || tagFilter !== "all" || readyOnly;
+  const hasFilters = Boolean(search.trim()) || statusFilter !== "all" || tagFilter !== "all" || readyOnly || sourceFilter !== "all";
   const filterSummary = hasFilters
     ? `${projects.length} of ${boardProjects.length} projects`
     : `${boardProjects.length} projects`;
@@ -250,6 +263,7 @@ export function App() {
     setStatusFilter("all");
     setTagFilter("all");
     setReadyOnly(false);
+    setSourceFilter("all");
   }
 
   function submitNewCard() {
@@ -325,10 +339,14 @@ export function App() {
             <details className="toolbar-menu">
               <summary>Workspace</summary>
               <div>
-                {["Aptlantis", "Desktop Apps", "Website", "Archives", "Research"].map((name, index) => (
-                  <button className={index === 0 ? "active" : ""} key={name}>
+                {[
+                  ["All Projects", "all", metrics.total],
+                  ["Live Only", "live", metrics.liveProjects],
+                  ["Samples", "sample", metrics.sampleProjects],
+                ].map(([name, source, count]) => (
+                  <button className={sourceFilter === source ? "active" : ""} key={name} onClick={() => setSourceFilter(source as "all" | "live" | "sample")}>
                     {name}
-                    {index === 0 && <small>{metrics.total}</small>}
+                    <small>{count}</small>
                   </button>
                 ))}
               </div>
@@ -465,6 +483,8 @@ export function App() {
             <span style={{ width: "48%" }} />
           </div>
           <span>Showing: {filterSummary}</span>
+          {sourceFilter === "live" && <span>Live projects only</span>}
+          {sourceFilter === "sample" && <span>Sample data only</span>}
           {readyOnly && <span>{metrics.releaseBlocked} blocked | {metrics.missingEvidence} missing evidence</span>}
           <span>{activeBoard.name}</span>
           <button

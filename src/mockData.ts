@@ -70,6 +70,7 @@ const project = (
   boardId,
   dbId: "active",
   availability: "available",
+  source: "sample",
   name,
   cardType: typeForTags(tags),
   displayConfig: {

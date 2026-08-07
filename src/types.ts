@@ -14,6 +14,8 @@ export type ProjectDbId = "active" | "archive" | "holding";
 
 export type ProjectAvailability = "available" | "unreachable";
 
+export type ProjectSource = "sample" | "manual" | "scan";
+
 export type CardType = "project" | "release" | "requirement" | "evidence" | "task";
 
 export type RequirementStatus = "open" | "in-progress" | "satisfied" | "waived";
@@ -204,6 +206,7 @@ export interface Project {
   boardId: BoardId;
   dbId: ProjectDbId;
   availability: ProjectAvailability;
+  source: ProjectSource;
   name: string;
   description: string;
   cardType: CardType;
@@ -280,5 +283,7 @@ export interface BoardMetrics {
   readyWithReceipt: number;
   releaseBlocked: number;
   missingEvidence: number;
+  liveProjects: number;
+  sampleProjects: number;
   storageUsedGb: number;
 }

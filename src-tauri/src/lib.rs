@@ -8,11 +8,16 @@ use std::{
     process::Command,
     sync::Mutex,
 };
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use tauri::{AppHandle, Manager, State};
 use thiserror::Error;
 use walkdir::WalkDir;
 
 type AppResult<T> = Result<T, AppError>;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Error)]
 enum AppError {
@@ -206,6 +211,7 @@ struct Project {
     board_id: String,
     db_id: String,
     availability: String,
+    source: String,
     name: String,
     description: String,
     card_type: String,
@@ -355,8 +361,8 @@ fn create_project(input: ProjectInput, state: State<AppState>) -> AppResult<Boar
     conn.execute(
         "
         INSERT INTO projects
-        (id, board_id, db_id, availability, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, datetime('now'), datetime('now'), ?13, ?14, ?15, ?16)
+        (id, board_id, db_id, availability, source, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason)
+        VALUES (?1, ?2, ?3, ?4, 'manual', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, datetime('now'), datetime('now'), ?13, ?14, ?15, ?16)
         ",
         params![
             id,
@@ -686,6 +692,7 @@ fn initialize_database(conn: &Connection) -> AppResult<()> {
             board_id TEXT NOT NULL DEFAULT 'primary',
             db_id TEXT NOT NULL DEFAULT 'active',
             availability TEXT NOT NULL DEFAULT 'available',
+            source TEXT NOT NULL DEFAULT 'sample',
             name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL,
@@ -808,6 +815,7 @@ fn initialize_database(conn: &Connection) -> AppResult<()> {
     ensure_column(conn, "projects", "board_id", "TEXT NOT NULL DEFAULT 'primary'")?;
     ensure_column(conn, "projects", "db_id", "TEXT NOT NULL DEFAULT 'active'")?;
     ensure_column(conn, "projects", "availability", "TEXT NOT NULL DEFAULT 'available'")?;
+    ensure_column(conn, "projects", "source", "TEXT NOT NULL DEFAULT 'sample'")?;
 
     Ok(())
 }
@@ -886,8 +894,8 @@ fn insert_project(
     conn.execute(
         "
         INSERT OR REPLACE INTO projects
-        (id, board_id, db_id, availability, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason)
-        VALUES (?1, 'primary', 'active', 'available', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '2026-03-01T09:12:00', '2026-08-06T09:54:00', ?10, 'aptlantis', ?11, ?12)
+        (id, board_id, db_id, availability, source, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason)
+        VALUES (?1, 'primary', 'active', 'available', 'sample', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '2026-03-01T09:12:00', '2026-08-06T09:54:00', ?10, 'aptlantis', ?11, ?12)
         ",
         params![
             id,
@@ -1298,7 +1306,7 @@ fn load_board_data(conn: &Connection) -> AppResult<BoardData> {
     let workspace = get_workspace(conn)?;
     let mut stmt = conn.prepare(
         "
-        SELECT id, board_id, db_id, availability, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason
+        SELECT id, board_id, db_id, availability, source, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason
         FROM projects
         ORDER BY board_id, status, card_order, name
         ",
@@ -1310,25 +1318,26 @@ fn load_board_data(conn: &Connection) -> AppResult<BoardData> {
             board_id: row.get(1)?,
             db_id: row.get(2)?,
             availability: row.get(3)?,
-            name: row.get(4)?,
-            description: row.get(5)?,
+            source: row.get(4)?,
+            name: row.get(5)?,
+            description: row.get(6)?,
             card_type: "project".into(),
             display_config: CardDisplayConfig {
                 card_type: "project".into(),
                 visible_fields: visible_fields_for_card_type("project").into_iter().map(str::to_string).collect(),
             },
-            status: row.get(6)?,
-            priority: row.get(7)?,
-            category: row.get(8)?,
-            stack: parse_json_vec(row.get::<_, String>(9)?),
-            tags: parse_json_vec(row.get::<_, String>(10)?),
-            root_path: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
-            card_order: row.get(14)?,
-            owner: row.get(15)?,
-            accent: row.get(16)?,
-            blocked_reason: row.get(17)?,
+            status: row.get(7)?,
+            priority: row.get(8)?,
+            category: row.get(9)?,
+            stack: parse_json_vec(row.get::<_, String>(10)?),
+            tags: parse_json_vec(row.get::<_, String>(11)?),
+            root_path: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
+            card_order: row.get(15)?,
+            owner: row.get(16)?,
+            accent: row.get(17)?,
+            blocked_reason: row.get(18)?,
             custom_fields: Vec::new(),
             requirements: Vec::new(),
             documents: Vec::new(),
@@ -1934,15 +1943,21 @@ fn run_drs_receipt_items(project: &Project) -> Vec<ReleaseReceiptItem> {
         )];
     }
 
-    let output = Command::new("pwsh")
+    let mut command = Command::new("pwsh");
+    command
         .arg("-NoProfile")
+        .arg("-NonInteractive")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-File")
         .arg(&drs_path)
         .arg("check-release")
-        .current_dir(&root)
-        .output();
+        .current_dir(&root);
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let output = command.output();
 
     let output = match output {
         Ok(output) => output,
@@ -2324,8 +2339,8 @@ fn scan_root_into_db(conn: &Connection, root: PathBuf) -> AppResult<()> {
         conn.execute(
             "
             INSERT OR REPLACE INTO projects
-            (id, board_id, db_id, availability, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason)
-            VALUES (?1, 'secondary', 'holding', 'available', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'), datetime('now'), ?10, 'aptlantis', 'cyan', NULL)
+            (id, board_id, db_id, availability, source, name, description, status, priority, category, stack, tags, root_path, created_at, updated_at, card_order, owner, accent, blocked_reason)
+            VALUES (?1, 'secondary', 'holding', 'available', 'scan', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'), datetime('now'), ?10, 'aptlantis', 'cyan', NULL)
             ",
             params![
                 id,
@@ -2430,6 +2445,7 @@ mod tests {
             board_id: "primary".into(),
             db_id: db_id.into(),
             availability: availability.into(),
+            source: "manual".into(),
             name: "Test Project".into(),
             description: "Test project".into(),
             card_type: "project".into(),

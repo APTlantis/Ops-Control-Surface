@@ -53,6 +53,8 @@ export function ProjectCard({
       <div className="card-type-row">
         <span>{project.cardType}</span>
         {release && visible.has("release") && <small>{release.version}</small>}
+        {project.source === "sample" && <small>Sample</small>}
+        {project.source === "scan" && <small>Scanned</small>}
         {project.dbId === "holding" && <small>Holding DB</small>}
         {project.availability === "unreachable" && <small>Unreachable</small>}
       </div>

@@ -8,6 +8,7 @@ interface UiState {
   search: string;
   statusFilter: ProjectStatus | "all";
   tagFilter: string | "all";
+  sourceFilter: "all" | "live" | "sample";
   activeTab: "overview" | "tasks" | "files" | "evidence" | "receipt" | "releases" | "requirements" | "setup" | "tags" | "activity";
   setSelectedProjectId: (projectId: string | null) => void;
   setCompareProjectId: (projectId: string | null) => void;
@@ -15,6 +16,7 @@ interface UiState {
   setSearch: (search: string) => void;
   setStatusFilter: (status: ProjectStatus | "all") => void;
   setTagFilter: (tag: string | "all") => void;
+  setSourceFilter: (source: UiState["sourceFilter"]) => void;
   setActiveTab: (tab: UiState["activeTab"]) => void;
 }
 
@@ -25,6 +27,7 @@ export const useUiStore = create<UiState>((set) => ({
   search: "",
   statusFilter: "all",
   tagFilter: "all",
+  sourceFilter: "all",
   activeTab: "overview",
   setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
   setCompareProjectId: (compareProjectId) => set({ compareProjectId }),
@@ -32,5 +35,6 @@ export const useUiStore = create<UiState>((set) => ({
   setSearch: (search) => set({ search }),
   setStatusFilter: (statusFilter) => set({ statusFilter }),
   setTagFilter: (tagFilter) => set({ tagFilter }),
+  setSourceFilter: (sourceFilter) => set({ sourceFilter }),
   setActiveTab: (activeTab) => set({ activeTab }),
 }));

@@ -130,7 +130,7 @@ export function ProjectInspector({
         <div className="inspector-title">
           <h2>{project.name}</h2>
           <span>
-            {project.cardType} card | {project.dbId} db | #{project.id.slice(0, 2).toUpperCase()}-001
+            {project.cardType} card | {project.source} | {project.dbId} db | #{project.id.slice(0, 2).toUpperCase()}-001
           </span>
         </div>
         <div className="inspector-actions">

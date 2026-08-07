@@ -324,6 +324,7 @@ function projectFromInput(input: ProjectInput, existingProjects: Project[]): Pro
     boardId: input.boardId,
     dbId: input.dbId,
     availability: input.availability ?? "available",
+    source: "manual",
     name: input.name,
     description: input.description,
     cardType,
