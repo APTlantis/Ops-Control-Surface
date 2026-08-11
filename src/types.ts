@@ -1,61 +1,8 @@
-export type ProjectStatus =
-  | "backlog"
-  | "planned"
-  | "in-progress"
-  | "review"
-  | "released"
-  | "blocked";
-
-export type ProjectPriority = "P1" | "P2" | "P3" | "P4";
-
 export type BoardId = "primary" | "secondary";
 
-export type ProjectDbId = "active" | "archive" | "holding";
+export type ObjectType = "project" | "powershell-operator" | "city-hall";
 
-export type ProjectAvailability = "available" | "unreachable";
-
-export type ProjectSource = "sample" | "manual" | "scan";
-
-export type CardType = "project" | "release" | "requirement" | "evidence" | "task";
-
-export type RequirementStatus = "open" | "in-progress" | "satisfied" | "waived";
-
-export type RequirementSeverity = "low" | "medium" | "high" | "critical";
-
-export type ReleaseReadinessProfile = "drs" | "cts" | "wds" | "generic";
-
-export type ReleaseReceiptStatus = "ready" | "ready_with_warnings" | "not_ready" | "indeterminate";
-
-export type ReleaseReceiptFreshness = "fresh" | "stale" | "partially_unavailable" | "superseded";
-
-export type ReleaseReceiptItemStatus = "pass" | "warn" | "fail" | "info" | "unavailable" | "not_applicable";
-
-export type ReleaseReceiptItemSeverity = "info" | "recommended" | "required" | "blocking";
-
-export type ReleaseReceiptItemCategory =
-  | "manifest"
-  | "version"
-  | "requirements"
-  | "tasks"
-  | "evidence"
-  | "artifact"
-  | "security"
-  | "documentation"
-  | "filesystem"
-  | "standard-validator";
-
-export type ReleaseReceiptSourceType = "sqlite" | "filesystem" | "requirement" | "validator" | "derived";
-
-export type CardField =
-  | "description"
-  | "tags"
-  | "tasks"
-  | "release"
-  | "requirements"
-  | "evidence"
-  | "priority"
-  | "owner"
-  | "custom";
+export type FieldKind = "text" | "textarea" | "checkbox" | "tags";
 
 export interface Workspace {
   id: string;
@@ -70,109 +17,175 @@ export interface BoardDefinition {
   description: string;
 }
 
-export interface ProjectDbDefinition {
-  id: ProjectDbId;
+export interface BoardLane {
+  id: string;
+  boardId: BoardId;
+  title: string;
+  tone: string;
+  allowedTypes?: ObjectType[];
+  placeholder?: boolean;
+}
+
+export interface ObjectIdentity {
+  id: string;
   name: string;
-  description: string;
-}
-
-export interface ProjectDocument {
-  id: string;
-  projectId: string;
-  kind: string;
-  title: string;
-  path: string;
-  updatedAt: string;
-  exists: boolean;
-}
-
-export interface ProjectTask {
-  id: string;
-  projectId: string;
-  title: string;
-  completed: boolean;
-  source: string;
-  position: number;
-  dueDate?: string | null;
-}
-
-export interface ProjectRelease {
-  id: string;
-  projectId: string;
-  version: string;
-  status: string;
-  targetDate: string;
-  readiness: number;
-  notes: string;
-}
-
-export interface ReleaseReceiptItem {
-  id: string;
-  key: string;
-  title: string;
-  category: ReleaseReceiptItemCategory;
-  status: ReleaseReceiptItemStatus;
-  severity: ReleaseReceiptItemSeverity;
-  label: string;
-  detail: string;
-  message: string;
-  rationale?: string | null;
-  source: string;
-  sourceType: ReleaseReceiptSourceType;
-  sourceRef?: string | null;
-  evidenceRefs: string[];
-  checkedAt: string;
-  evidencePath?: string | null;
-}
-
-export interface ReleaseReceiptCounts {
-  pass: number;
-  warn: number;
-  fail: number;
-  unavailable: number;
-  notApplicable: number;
-  blocking: number;
-  missingEvidence: number;
-}
-
-export interface ReleaseReceipt {
-  id: string;
-  projectId: string;
-  releaseId: string;
-  projectName: string;
-  releaseVersion: string;
-  profile: ReleaseReadinessProfile;
-  profileVersion: string;
-  status: ReleaseReceiptStatus;
-  freshness: ReleaseReceiptFreshness;
-  readiness: number;
-  counts: ReleaseReceiptCounts;
-  blockers: string[];
-  evidenceRefs: string[];
-  missingEvidence: string[];
-  filesystemReachable: boolean;
-  validatorRuns: string[];
-  generatedAt: string;
-  generatorVersion: string;
-  inputFingerprint: string;
+  acronym?: string;
   summary: string;
-  markdown: string;
-  items: ReleaseReceiptItem[];
 }
 
-export interface CustomField {
+export interface ObjectBoardPlacement {
+  board: BoardId;
+  lane: string;
+  pinned: boolean;
+}
+
+export interface ObjectMetadata {
+  tags: string[];
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectPayload {
+  classification: {
+    kind: string;
+    lifecycle: string;
+    attention: string;
+    availability: string;
+  };
+  location: {
+    root: string;
+    repository: string;
+  };
+  release: {
+    released: boolean;
+    version: string;
+    targetVersion: string;
+  };
+  operation: {
+    defaultIde: string;
+    defaultTerminal: string;
+  };
+  governance: {
+    cityHallStatus: string;
+  };
+}
+
+export interface PowerShellOperatorPayload {
+  source: {
+    script: string;
+  };
+  execution: {
+    scope: string;
+    workingDirectory: string;
+    elevation: string;
+    mutation: string;
+    shell: string;
+  };
+  parameters: {
+    discovery: string;
+  };
+  output: {
+    kind: string;
+    artifactPath: string;
+  };
+  state: {
+    enabled: boolean;
+    lastRun: string;
+    lastResult: string;
+  };
+}
+
+export interface CityHallPayload {
+  document: {
+    path: string;
+    version: string;
+    status: string;
+  };
+  governance: {
+    domain: string;
+    maturity: string;
+    adoption: string;
+    standardized: boolean;
+  };
+  operation: {
+    attention: string;
+  };
+}
+
+export type ObjectPayload = ProjectPayload | PowerShellOperatorPayload | CityHallPayload;
+
+export interface OperationalObjectBase<TType extends ObjectType, TPayload extends ObjectPayload> {
   id: string;
-  projectId: string;
-  label: string;
-  value: string;
-  fieldType: "text" | "link" | "date" | "number";
-  showOnCard: boolean;
-  position: number;
+  objectType: TType;
+  schema: string;
+  schemaVersion: string;
+  identity: ObjectIdentity;
+  board: ObjectBoardPlacement;
+  metadata: ObjectMetadata;
+  payload: TPayload;
+  createdAt: string;
+  updatedAt: string;
+  cardOrder: number;
 }
 
-export interface CardDisplayConfig {
-  cardType: CardType;
-  visibleFields: CardField[];
+export type ProjectObject = OperationalObjectBase<"project", ProjectPayload>;
+export type PowerShellOperatorObject = OperationalObjectBase<"powershell-operator", PowerShellOperatorPayload>;
+export type CityHallObject = OperationalObjectBase<"city-hall", CityHallPayload>;
+export type OperationalObject = ProjectObject | PowerShellOperatorObject | CityHallObject;
+
+export interface FieldDefinition {
+  path: string;
+  label: string;
+  kind: FieldKind;
+  required?: boolean;
+}
+
+export interface FieldGroup {
+  title: string;
+  fields: FieldDefinition[];
+}
+
+export interface ObjectTypeDefinition {
+  type: ObjectType;
+  schema: string;
+  schemaVersion: string;
+  label: string;
+  shortLabel: string;
+  accent: string;
+  defaultLane: string;
+  creationGroups: FieldGroup[];
+  inspectorGroups: FieldGroup[];
+  createEmpty: (placement: Pick<ObjectBoardPlacement, "board" | "lane">) => OperationalObject;
+}
+
+export interface CreateObjectInput {
+  objectType: ObjectType;
+  identity: ObjectIdentity;
+  board: ObjectBoardPlacement;
+  metadata: {
+    tags: string[];
+    notes: string;
+  };
+  payload: ObjectPayload;
+}
+
+export interface UpdateObjectInput {
+  id: string;
+  identity: ObjectIdentity;
+  board: ObjectBoardPlacement;
+  metadata: {
+    tags: string[];
+    notes: string;
+  };
+  payload: ObjectPayload;
+}
+
+export interface MoveObjectInput {
+  objectId: string;
+  boardId: BoardId;
+  laneId: string;
+  cardOrder: number;
 }
 
 export interface TagDefinition {
@@ -181,109 +194,20 @@ export interface TagDefinition {
   description?: string | null;
 }
 
-export interface Requirement {
-  id: string;
-  projectId: string;
-  title: string;
-  status: RequirementStatus;
-  severity: RequirementSeverity;
-  blocking: boolean;
-  source: string;
-  evidencePath?: string | null;
-  notes?: string | null;
-  updatedAt: string;
-}
-
-export interface ActivityEvent {
-  id: string;
-  projectId: string;
-  message: string;
-  createdAt: string;
-}
-
-export interface Project {
-  id: string;
-  boardId: BoardId;
-  dbId: ProjectDbId;
-  availability: ProjectAvailability;
-  source: ProjectSource;
-  name: string;
-  description: string;
-  cardType: CardType;
-  displayConfig: CardDisplayConfig;
-  status: ProjectStatus;
-  priority: ProjectPriority;
-  category: string;
-  stack: string[];
-  tags: string[];
-  rootPath: string;
-  createdAt: string;
-  updatedAt: string;
-  cardOrder: number;
-  owner: string;
-  accent: string;
-  blockedReason?: string | null;
-  customFields: CustomField[];
-  requirements: Requirement[];
-  documents: ProjectDocument[];
-  tasks: ProjectTask[];
-  releases: ProjectRelease[];
-  receipts: ReleaseReceipt[];
-  activity: ActivityEvent[];
-}
-
-export interface ProjectInput {
-  id?: string;
-  boardId: BoardId;
-  dbId: ProjectDbId;
-  availability?: ProjectAvailability;
-  name: string;
-  description: string;
-  status: ProjectStatus;
-  priority: ProjectPriority;
-  category: string;
-  tags: string[];
-  stack: string[];
-  rootPath?: string;
-  owner?: string;
-  accent?: string;
-}
-
-export interface ProjectBasicsUpdate {
-  projectId: string;
-  boardId: BoardId;
-  dbId: ProjectDbId;
-  availability: ProjectAvailability;
-  status: ProjectStatus;
-  priority: ProjectPriority;
-  tags: string[];
-  stack: string[];
-}
-
 export interface BoardData {
   workspace: Workspace;
   boards: BoardDefinition[];
-  projectDbs: ProjectDbDefinition[];
-  projects: Project[];
+  lanes: BoardLane[];
+  objects: OperationalObject[];
   tagDefinitions: TagDefinition[];
-}
-
-export interface BoardColumn {
-  id: ProjectStatus;
-  title: string;
-  tone: string;
 }
 
 export interface BoardMetrics {
   total: number;
-  active: number;
-  inProgress: number;
-  blocked: number;
-  readyToShip: number;
-  readyWithReceipt: number;
-  releaseBlocked: number;
-  missingEvidence: number;
-  liveProjects: number;
-  sampleProjects: number;
+  projects: number;
+  operators: number;
+  cityHall: number;
+  pinned: number;
+  attention: number;
   storageUsedGb: number;
 }
