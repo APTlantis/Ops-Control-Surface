@@ -1,40 +1,36 @@
 import { create } from "zustand";
-import { BoardId, ProjectStatus } from "./types";
+import { BoardId, ObjectType } from "./types";
 
 interface UiState {
-  selectedProjectId: string | null;
-  compareProjectId: string | null;
+  selectedObjectId: string | null;
+  compareObjectId: string | null;
   activeBoardId: BoardId;
   search: string;
-  statusFilter: ProjectStatus | "all";
+  typeFilter: ObjectType | "all";
   tagFilter: string | "all";
-  sourceFilter: "all" | "live" | "sample";
-  activeTab: "overview" | "tasks" | "files" | "evidence" | "receipt" | "releases" | "requirements" | "setup" | "tags" | "activity";
-  setSelectedProjectId: (projectId: string | null) => void;
-  setCompareProjectId: (projectId: string | null) => void;
+  activeTab: string;
+  setSelectedObjectId: (objectId: string | null) => void;
+  setCompareObjectId: (objectId: string | null) => void;
   setActiveBoardId: (boardId: BoardId) => void;
   setSearch: (search: string) => void;
-  setStatusFilter: (status: ProjectStatus | "all") => void;
+  setTypeFilter: (type: ObjectType | "all") => void;
   setTagFilter: (tag: string | "all") => void;
-  setSourceFilter: (source: UiState["sourceFilter"]) => void;
-  setActiveTab: (tab: UiState["activeTab"]) => void;
+  setActiveTab: (tab: string) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  selectedProjectId: "filecabinet",
-  compareProjectId: null,
+  selectedObjectId: "workspace-governance-standard",
+  compareObjectId: null,
   activeBoardId: "primary",
   search: "",
-  statusFilter: "all",
+  typeFilter: "all",
   tagFilter: "all",
-  sourceFilter: "all",
   activeTab: "overview",
-  setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
-  setCompareProjectId: (compareProjectId) => set({ compareProjectId }),
+  setSelectedObjectId: (selectedObjectId) => set({ selectedObjectId }),
+  setCompareObjectId: (compareObjectId) => set({ compareObjectId }),
   setActiveBoardId: (activeBoardId) => set({ activeBoardId }),
   setSearch: (search) => set({ search }),
-  setStatusFilter: (statusFilter) => set({ statusFilter }),
+  setTypeFilter: (typeFilter) => set({ typeFilter }),
   setTagFilter: (tagFilter) => set({ tagFilter }),
-  setSourceFilter: (sourceFilter) => set({ sourceFilter }),
   setActiveTab: (activeTab) => set({ activeTab }),
 }));

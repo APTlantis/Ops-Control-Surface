@@ -146,6 +146,13 @@ export interface FieldGroup {
   fields: FieldDefinition[];
 }
 
+export interface InspectorTabDefinition {
+  id: string;
+  label: string;
+  capability: string;
+  groupTitles?: string[];
+}
+
 export interface ObjectTypeDefinition {
   type: ObjectType;
   schema: string;
@@ -154,6 +161,7 @@ export interface ObjectTypeDefinition {
   shortLabel: string;
   accent: string;
   defaultLane: string;
+  inspectorTabs: InspectorTabDefinition[];
   creationGroups: FieldGroup[];
   inspectorGroups: FieldGroup[];
   createEmpty: (placement: Pick<ObjectBoardPlacement, "board" | "lane">) => OperationalObject;

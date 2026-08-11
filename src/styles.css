@@ -530,6 +530,10 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(97, 140, 255, 0.26);
 }
 
+.board-column.placeholder-lane {
+  background: rgba(16, 31, 49, 0.28);
+}
+
 .board-column header {
   display: flex;
   align-items: center;
@@ -594,6 +598,20 @@ h1 {
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
 }
 
+.object-card-project {
+  border-top: 2px solid rgba(32, 212, 219, 0.72);
+}
+
+.object-card-powershell-operator {
+  border-top: 2px solid rgba(67, 167, 255, 0.78);
+  background: linear-gradient(145deg, rgba(15, 35, 61, 0.97), rgba(10, 25, 44, 0.97));
+}
+
+.object-card-city-hall {
+  border-top: 2px solid rgba(157, 125, 255, 0.78);
+  background: linear-gradient(145deg, rgba(27, 29, 63, 0.97), rgba(14, 23, 43, 0.97));
+}
+
 .project-card.selected {
   border-color: rgba(108, 94, 255, 0.9);
   box-shadow:
@@ -648,6 +666,11 @@ h1 {
   width: 72%;
   height: 72%;
   object-fit: contain;
+}
+
+.project-icon svg,
+.inspector-icon svg {
+  color: currentColor;
 }
 
 .project-icon-card {
@@ -764,8 +787,58 @@ h1 {
   text-transform: capitalize;
 }
 
+.object-focus {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0 9px;
+  padding: 9px;
+  border: 1px solid rgba(126, 162, 199, 0.18);
+  border-radius: 6px;
+  background: rgba(6, 17, 29, 0.5);
+}
+
+.object-focus span,
+.object-focus small {
+  overflow: hidden;
+  color: #8ba4bd;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.object-focus strong {
+  overflow: hidden;
+  color: #f4f8ff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.object-card-powershell-operator .object-focus {
+  border-color: rgba(67, 167, 255, 0.28);
+  background: rgba(11, 36, 65, 0.62);
+}
+
+.object-card-city-hall .object-focus {
+  border-color: rgba(157, 125, 255, 0.28);
+  background: rgba(35, 29, 70, 0.5);
+}
+
 .card-signal-row {
   margin: 8px 0;
+}
+
+.card-signal-row span {
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+}
+
+.card-signal-row span small {
+  color: #7892ab;
+  font-size: 10px;
+  line-height: 1;
 }
 
 .card-signal-row .danger {
@@ -866,6 +939,26 @@ h1 {
 
 .new-card-panel .full-field {
   grid-column: 1 / -1;
+}
+
+.typed-create-panel .schema-groups,
+.schema-group,
+.inspector-save,
+.object-actions {
+  grid-column: 1 / -1;
+}
+
+.schema-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.schema-group {
+  min-width: 0;
+}
+
+.schema-group .panel-title {
+  margin-top: 0;
 }
 
 .new-card-panel .secondary-button,
@@ -1019,7 +1112,7 @@ textarea {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 4px;
   margin: 12px -4px 14px;
   padding-bottom: 2px;
@@ -1302,6 +1395,10 @@ textarea {
 }
 
 .editor-panel .full-field,
+.schema-groups,
+.schema-group,
+.inspector-save,
+.object-actions,
 .checkbox-grid,
 .custom-field-editor,
 .new-project-button {

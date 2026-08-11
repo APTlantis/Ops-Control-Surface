@@ -1,149 +1,92 @@
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import {
-  Archive,
-  CalendarCheck,
-  CheckCircle2,
-  ChevronLeft,
+  Building2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleX,
-  ClipboardCheck,
   Database,
   Filter,
   FolderKanban,
-  Gauge,
-  Inbox,
-  LayoutDashboard,
-  Lock,
+  Layers3,
+  Pin,
   Plus,
-  RefreshCcw,
+  Power,
   Search,
-  ShieldAlert,
   SlidersHorizontal,
-  Sparkles,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import {
-  createRequirement,
-  createProject,
-  deleteRequirement,
-  generateReleaseReceipt,
-  getBoardData,
-  moveProject,
-  scanWorkspace,
-  updateProjectBasics,
-  updateProjectSetup,
-  updateRelease,
-  updateRequirement,
-  updateTagDefinition,
-} from "./api";
-import { columns } from "./mockData";
-import { useUiStore } from "./store";
-import { BoardData, BoardId, BoardMetrics, Project, ProjectInput, ProjectStatus } from "./types";
+import { ReactNode, useState } from "react";
+import { createObject, getBoardData, moveObject, updateObject } from "./api";
 import { BoardColumnView } from "./components/BoardColumnView";
-import { ProjectInspector } from "./components/ProjectInspector";
+import { NewObjectPanel } from "./components/NewObjectPanel";
+import { ObjectInspector } from "./components/ObjectInspector";
+import { lanesForBoard, objectRegistry, objectTypes } from "./objectRegistry";
+import { useUiStore } from "./store";
+import { BoardData, BoardId, BoardMetrics, ObjectType, OperationalObject } from "./types";
 
-const statusLabels: Record<ProjectStatus, string> = {
-  backlog: "Backlog",
-  planned: "Planned",
-  "in-progress": "In Progress",
-  review: "Review",
-  released: "Released",
-  blocked: "Blocked",
-};
-
-const navViews: Array<[string, LucideIcon, (metrics: BoardMetrics, projects: Project[]) => number]> = [
-  ["Overview", LayoutDashboard, (metrics) => metrics.total],
-  ["Kanban", FolderKanban, (metrics) => metrics.total],
-  ["Releases", CalendarCheck, (metrics) => metrics.readyToShip],
-  ["Evidence", ClipboardCheck, (_metrics, projects) => projects.filter((project) => project.documents.some((document) => document.kind === "evidence" && document.exists)).length],
-  ["Backlog", Inbox, (_metrics, projects) => projects.filter((project) => project.status === "backlog").length],
-  ["Blocked", ShieldAlert, (metrics) => metrics.blocked],
-  ["Completed", CheckCircle2, (_metrics, projects) => projects.filter((project) => project.status === "released").length],
-];
-
-function computeMetrics(data: BoardData, projects = data.projects): BoardMetrics {
-  const active = projects.filter((project) => !["released", "blocked"].includes(project.status)).length;
-  const releaseCandidates = projects.filter((project) => project.releases.some((release) => release.readiness >= 70));
+function computeMetrics(data: BoardData, objects = data.objects): BoardMetrics {
   return {
-    total: projects.length,
-    active,
-    inProgress: projects.filter((project) => project.status === "in-progress").length,
-    blocked: projects.filter((project) => project.status === "blocked").length,
-    readyToShip: releaseCandidates.length,
-    readyWithReceipt: releaseCandidates.filter((project) =>
-      project.receipts.some((receipt) => ["ready", "ready_with_warnings"].includes(receipt.status)),
-    ).length,
-    releaseBlocked: projects.filter((project) =>
-      project.requirements.some((requirement) => requirement.blocking && !["satisfied", "waived"].includes(requirement.status)),
-    ).length,
-    missingEvidence: projects.filter((project) => !project.documents.some((document) => document.kind === "evidence" && document.exists)).length,
-    liveProjects: projects.filter((project) => project.source !== "sample").length,
-    sampleProjects: projects.filter((project) => project.source === "sample").length,
+    total: objects.length,
+    projects: objects.filter((object) => object.objectType === "project").length,
+    operators: objects.filter((object) => object.objectType === "powershell-operator").length,
+    cityHall: objects.filter((object) => object.objectType === "city-hall").length,
+    pinned: objects.filter((object) => object.board.pinned).length,
+    attention: objects.filter((object) => {
+      if (object.objectType === "project") return Boolean(object.payload.classification.attention.trim());
+      if (object.objectType === "city-hall") return Boolean(object.payload.operation.attention.trim());
+      return Boolean(object.payload.state.lastResult.trim());
+    }).length,
     storageUsedGb: data.workspace.storageUsedGb,
   };
 }
 
-function filterProjects(
-  projects: Project[],
-  search: string,
-  statusFilter: ProjectStatus | "all",
-  tagFilter: string | "all",
-  readyOnly: boolean,
-  sourceFilter: "all" | "live" | "sample",
-) {
+function searchableText(object: OperationalObject) {
+  return [
+    object.id,
+    object.objectType,
+    object.schema,
+    object.identity.id,
+    object.identity.name,
+    object.identity.acronym,
+    object.identity.summary,
+    ...object.metadata.tags,
+    object.metadata.notes,
+    JSON.stringify(object.payload),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function filterObjects(objects: OperationalObject[], search: string, typeFilter: ObjectType | "all", tagFilter: string | "all") {
   const query = search.trim().toLowerCase();
-  return projects.filter((project) => {
-    const matchesSearch =
-      !query ||
-      [project.name, project.description, project.category, project.priority, ...project.tags, ...project.stack]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    const matchesStatus = statusFilter === "all" || project.status === statusFilter;
-    const matchesTag = tagFilter === "all" || project.tags.includes(tagFilter);
-    const matchesReady = !readyOnly || project.releases.some((release) => release.readiness >= 70);
-    const matchesSource =
-      sourceFilter === "all" || (sourceFilter === "live" && project.source !== "sample") || (sourceFilter === "sample" && project.source === "sample");
-    return matchesSearch && matchesStatus && matchesTag && matchesReady && matchesSource;
+  return objects.filter((object) => {
+    const matchesSearch = !query || searchableText(object).includes(query);
+    const matchesType = typeFilter === "all" || object.objectType === typeFilter;
+    const matchesTag = tagFilter === "all" || object.metadata.tags.includes(tagFilter);
+    return matchesSearch && matchesType && matchesTag;
   });
 }
 
 export function App() {
   const queryClient = useQueryClient();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-  const [showNewCard, setShowNewCard] = useState(false);
-  const [readyOnly, setReadyOnly] = useState(false);
-  const [newCard, setNewCard] = useState<ProjectInput>({
-    boardId: "secondary",
-    dbId: "active",
-    availability: "available",
-    name: "",
-    description: "",
-    status: "backlog",
-    priority: "P3",
-    category: "Tooling",
-    tags: ["Tooling"],
-    stack: ["Tooling"],
-  });
+  const [showNewObject, setShowNewObject] = useState(false);
+  const [newObjectLane, setNewObjectLane] = useState<string | null>(null);
   const {
-    selectedProjectId,
-    setSelectedProjectId,
-    compareProjectId,
-    setCompareProjectId,
+    selectedObjectId,
+    setSelectedObjectId,
+    compareObjectId,
+    setCompareObjectId,
     activeBoardId,
     setActiveBoardId,
     search,
     setSearch,
-    statusFilter,
-    setStatusFilter,
+    typeFilter,
+    setTypeFilter,
     tagFilter,
     setTagFilter,
-    sourceFilter,
-    setSourceFilter,
   } = useUiStore();
 
   const boardQuery = useQuery({
@@ -152,155 +95,93 @@ export function App() {
   });
 
   const moveMutation = useMutation({
-    mutationFn: ({ projectId, status, cardOrder }: { projectId: string; status: ProjectStatus; cardOrder: number }) =>
-      moveProject(projectId, status, cardOrder),
+    mutationFn: moveObject,
     onSuccess: (data) => queryClient.setQueryData(["board"], data),
   });
 
-  const createProjectMutation = useMutation({
-    mutationFn: createProject,
+  const createMutation = useMutation({
+    mutationFn: createObject,
     onSuccess: (nextData) => {
       queryClient.setQueryData(["board"], nextData);
-      const created = nextData.projects.find((project) => project.name === newCard.name);
-      if (created) {
-        setActiveBoardId(created.boardId);
-        setSelectedProjectId(created.id);
+      const newest = [...nextData.objects].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      if (newest) {
+        setActiveBoardId(newest.board.board);
+        setSelectedObjectId(newest.id);
       }
-      setShowNewCard(false);
-      setNewCard({
-        boardId: activeBoardId,
-        dbId: "active",
-        availability: "available",
-        name: "",
-        description: "",
-        status: "backlog",
-        priority: "P3",
-        category: "Tooling",
-        tags: ["Tooling"],
-        stack: ["Tooling"],
-      });
+      setShowNewObject(false);
+      setNewObjectLane(null);
     },
   });
 
-  const basicsMutation = useMutation({
-    mutationFn: updateProjectBasics,
+  const updateMutation = useMutation({
+    mutationFn: updateObject,
     onSuccess: (nextData) => queryClient.setQueryData(["board"], nextData),
   });
 
-  const scanMutation = useMutation({
-    mutationFn: () => scanWorkspace(),
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const setupMutation = useMutation({
-    mutationFn: ({ projectId, setup }: Parameters<typeof updateProjectSetup> extends [infer A, infer B] ? { projectId: A; setup: B } : never) =>
-      updateProjectSetup(projectId as string, setup as Parameters<typeof updateProjectSetup>[1]),
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const releaseMutation = useMutation({
-    mutationFn: updateRelease,
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const createRequirementMutation = useMutation({
-    mutationFn: createRequirement,
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const updateRequirementMutation = useMutation({
-    mutationFn: updateRequirement,
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const deleteRequirementMutation = useMutation({
-    mutationFn: ({ projectId, requirementId }: { projectId: string; requirementId: string }) => deleteRequirement(projectId, requirementId),
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const tagDefinitionMutation = useMutation({
-    mutationFn: updateTagDefinition,
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
-  const receiptMutation = useMutation({
-    mutationFn: ({ projectId, releaseId }: { projectId: string; releaseId?: string }) => generateReleaseReceipt(projectId, releaseId),
-    onSuccess: (data) => queryClient.setQueryData(["board"], data),
-  });
-
   const data = boardQuery.data;
-  const boards = data?.boards.length ? data.boards : [{ id: "primary" as BoardId, name: "Primary Board", description: "Mainline projects." }];
-  const projectDbs = data?.projectDbs.length
-    ? data.projectDbs
-    : [{ id: "active" as const, name: "Active DB", description: "Reachable projects." }];
+  const boards = data?.boards.length ? data.boards : [{ id: "primary" as BoardId, name: "Operations Control", description: "Typed operational objects." }];
   const activeBoard = boards.find((board) => board.id === activeBoardId) ?? boards[0];
   const activeBoardIndex = Math.max(0, boards.findIndex((board) => board.id === activeBoard.id));
-  const boardProjects = data?.projects.filter((project) => project.boardId === activeBoard.id) ?? [];
-  const projects = data ? filterProjects(boardProjects, search, statusFilter, tagFilter, readyOnly, sourceFilter) : [];
-  const selectedProject = boardProjects.find((project) => project.id === selectedProjectId) ?? boardProjects[0] ?? null;
-  const compareProject =
-    compareProjectId && compareProjectId !== selectedProject?.id
-      ? data?.projects.find((project) => project.id === compareProjectId) ?? null
-      : null;
-  const metrics = data ? computeMetrics(data, boardProjects) : null;
-  const allTags = Array.from(new Set([...(data?.tagDefinitions.map((tag) => tag.tag) ?? []), ...(data?.projects.flatMap((project) => project.tags) ?? [])])).sort();
-  const hasFilters = Boolean(search.trim()) || statusFilter !== "all" || tagFilter !== "all" || readyOnly || sourceFilter !== "all";
-  const filterSummary = hasFilters
-    ? `${projects.length} of ${boardProjects.length} projects`
-    : `${boardProjects.length} projects`;
+  const boardObjects = data?.objects.filter((object) => object.board.board === activeBoard.id) ?? [];
+  const objects = data ? filterObjects(boardObjects, search, typeFilter, tagFilter) : [];
+  const lanes = data?.lanes.filter((lane) => lane.boardId === activeBoard.id) ?? lanesForBoard(activeBoard.id);
+  const selectedObject = boardObjects.find((object) => object.id === selectedObjectId) ?? boardObjects[0] ?? null;
+  const compareObject =
+    compareObjectId && compareObjectId !== selectedObject?.id ? data?.objects.find((object) => object.id === compareObjectId) ?? null : null;
+  const metrics = data ? computeMetrics(data, boardObjects) : null;
+  const allTags = Array.from(new Set([...(data?.tagDefinitions.map((tag) => tag.tag) ?? []), ...(data?.objects.flatMap((object) => object.metadata.tags) ?? [])])).sort();
+  const hasFilters = Boolean(search.trim()) || typeFilter !== "all" || tagFilter !== "all";
+  const filterSummary = hasFilters ? `${objects.length} of ${boardObjects.length} objects` : `${boardObjects.length} objects`;
 
   function cycleBoard(direction: 1 | -1) {
     const nextIndex = (activeBoardIndex + direction + boards.length) % boards.length;
     const nextBoard = boards[nextIndex];
     setActiveBoardId(nextBoard.id);
-    const nextProject = data?.projects.find((project) => project.boardId === nextBoard.id) ?? null;
-    setSelectedProjectId(nextProject?.id ?? null);
-    setCompareProjectId(null);
+    const nextObject = data?.objects.find((object) => object.board.board === nextBoard.id) ?? null;
+    setSelectedObjectId(nextObject?.id ?? null);
+    setCompareObjectId(null);
   }
 
   function clearFilters() {
     setSearch("");
-    setStatusFilter("all");
+    setTypeFilter("all");
     setTagFilter("all");
-    setReadyOnly(false);
-    setSourceFilter("all");
   }
 
-  function submitNewCard() {
-    const tags = newCard.tags.map((tag) => tag.trim()).filter(Boolean);
-    if (!newCard.name.trim()) return;
-    createProjectMutation.mutate({
-      ...newCard,
-      name: newCard.name.trim(),
-      description: newCard.description.trim() || "New project card.",
-      category: tags[0] ?? "Tooling",
-      tags: tags.length ? tags : ["Tooling"],
-      stack: tags.length ? tags.slice(0, 3) : ["Tooling"],
-    });
+  function openNewObject(laneId?: string) {
+    setNewObjectLane(laneId ?? lanes.find((lane) => !lane.placeholder)?.id ?? objectRegistry.project.defaultLane);
+    setShowNewObject(true);
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    const projectId = String(event.active.id);
+    const objectId = String(event.active.id);
     const overId = event.over?.id ? String(event.over.id) : null;
     if (!overId || !data) return;
 
-    const destination = columns.find((column) => column.id === overId)?.id;
-    if (!destination) return;
+    const destination = lanes.find((lane) => lane.id === overId);
+    if (!destination || destination.placeholder) return;
 
-    const project = data.projects.find((candidate) => candidate.id === projectId);
-    if (!project || project.status === destination) return;
+    const object = data.objects.find((candidate) => candidate.id === objectId);
+    if (!object || (object.board.board === activeBoard.id && object.board.lane === destination.id)) return;
 
     const nextOrder =
-      Math.max(0, ...data.projects.filter((candidate) => candidate.status === destination).map((candidate) => candidate.cardOrder)) + 1;
+      Math.max(0, ...data.objects.filter((candidate) => candidate.board.board === activeBoard.id && candidate.board.lane === destination.id).map((candidate) => candidate.cardOrder)) + 1;
 
     queryClient.setQueryData<BoardData>(["board"], {
       ...data,
-      projects: data.projects.map((candidate) =>
-        candidate.id === projectId ? { ...candidate, status: destination, cardOrder: nextOrder } : candidate,
+      objects: data.objects.map((candidate) =>
+        candidate.id === objectId
+          ? {
+              ...candidate,
+              board: { ...candidate.board, board: activeBoard.id, lane: destination.id },
+              cardOrder: nextOrder,
+              updatedAt: new Date().toISOString(),
+            }
+          : candidate,
       ),
     });
 
-    moveMutation.mutate({ projectId, status: destination, cardOrder: nextOrder });
+    moveMutation.mutate({ objectId, boardId: activeBoard.id, laneId: destination.id, cardOrder: nextOrder });
   }
 
   if (boardQuery.isLoading || !data || !metrics) {
@@ -313,13 +194,13 @@ export function App() {
         <header className="top-bar">
           <div className="brand top-brand">
             <div className="brand-mark">
-              <FolderKanban size={19} />
+              <Layers3 size={19} />
             </div>
             <div>
               <div className="eyebrow">Aptlantis Ops</div>
-            <h1>
-              {data.workspace.name} <ChevronDown size={18} />
-            </h1>
+              <h1>
+                {data.workspace.name} <ChevronDown size={18} />
+              </h1>
             </div>
           </div>
 
@@ -329,7 +210,9 @@ export function App() {
                 <ChevronLeft size={16} />
               </button>
               <div>
-                <span>Board {activeBoardIndex + 1} of {boards.length}</span>
+                <span>
+                  Board {activeBoardIndex + 1} of {boards.length}
+                </span>
                 <strong>{activeBoard.name}</strong>
               </div>
               <button className="icon-button" onClick={() => cycleBoard(1)}>
@@ -337,37 +220,16 @@ export function App() {
               </button>
             </div>
             <details className="toolbar-menu">
-              <summary>Workspace</summary>
+              <summary>Types</summary>
               <div>
-                {[
-                  ["All Projects", "all", metrics.total],
-                  ["Live Only", "live", metrics.liveProjects],
-                  ["Samples", "sample", metrics.sampleProjects],
-                ].map(([name, source, count]) => (
-                  <button className={sourceFilter === source ? "active" : ""} key={name} onClick={() => setSourceFilter(source as "all" | "live" | "sample")}>
-                    {name}
-                    <small>{count}</small>
-                  </button>
-                ))}
-              </div>
-            </details>
-            <details className="toolbar-menu">
-              <summary>Views</summary>
-              <div>
-                {navViews.map(([name, Icon, getCount]) => (
-                  <button
-                    className={name === "Kanban" ? "active" : ""}
-                    key={name}
-                    onClick={() => {
-                      if (name === "Backlog") setStatusFilter("backlog");
-                      if (name === "Blocked") setStatusFilter("blocked");
-                      if (name === "Completed") setStatusFilter("released");
-                      if (name === "Kanban" || name === "Overview") setStatusFilter("all");
-                    }}
-                  >
-                    <Icon size={15} />
-                    {name}
-                    <small>{getCount(metrics, boardProjects)}</small>
+                <button className={typeFilter === "all" ? "active" : ""} onClick={() => setTypeFilter("all")}>
+                  All Objects
+                  <small>{boardObjects.length}</small>
+                </button>
+                {objectTypes.map((type) => (
+                  <button className={typeFilter === type.type ? "active" : ""} key={type.type} onClick={() => setTypeFilter(type.type)}>
+                    {type.label}
+                    <small>{boardObjects.filter((object) => object.objectType === type.type).length}</small>
                   </button>
                 ))}
               </div>
@@ -381,7 +243,7 @@ export function App() {
                     <button className={tagFilter === tag ? "active" : ""} key={tag} onClick={() => setTagFilter(tag)}>
                       <span className="dot" style={{ background: color }} />
                       {tag}
-                      <small>{boardProjects.filter((project) => project.tags.includes(tag)).length}</small>
+                      <small>{boardObjects.filter((object) => object.metadata.tags.includes(tag)).length}</small>
                     </button>
                   );
                 })}
@@ -389,7 +251,7 @@ export function App() {
             </details>
             <label className="search-box">
               <Search size={17} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search projects, tasks, tags..." />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search objects, schemas, tags..." />
             </label>
             <details className="toolbar-menu">
               <summary>
@@ -397,12 +259,12 @@ export function App() {
               </summary>
               <div>
                 <label>
-                  Status
-                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ProjectStatus | "all")}>
-                    <option value="all">All Statuses</option>
-                    {columns.map((column) => (
-                      <option value={column.id} key={column.id}>
-                        {statusLabels[column.id]}
+                  Object Type
+                  <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as ObjectType | "all")}>
+                    <option value="all">All Types</option>
+                    {objectTypes.map((type) => (
+                      <option value={type.type} key={type.type}>
+                        {type.label}
                       </option>
                     ))}
                   </select>
@@ -423,27 +285,20 @@ export function App() {
             <button className="icon-button" title="View settings">
               <SlidersHorizontal size={17} />
             </button>
-            <button className="primary-button" onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending}>
-              <RefreshCcw size={16} />
-              {scanMutation.isPending ? "Scanning" : "Scan"}
+            <button className="primary-button" onClick={() => openNewObject()}>
+              <Plus size={16} />
+              New Object
             </button>
           </div>
         </header>
 
         <section className="metrics-strip">
-          <Metric icon={<Database size={24} />} label="Total Projects" value={metrics.total} tone="violet" />
-          <Metric icon={<Gauge size={24} />} label="Active" value={metrics.active} tone="blue" />
-          <Metric icon={<FolderKanban size={24} />} label="In Progress" value={metrics.inProgress} tone="cyan" />
-          <Metric icon={<Lock size={24} />} label="Blocked" value={metrics.blocked} tone="orange" />
-          <Metric
-            icon={<Sparkles size={24} />}
-            label={`Ready to Ship | ${metrics.readyWithReceipt} receipted`}
-            value={metrics.readyToShip}
-            tone="green"
-            active={readyOnly}
-            onClick={() => setReadyOnly((value) => !value)}
-          />
-          <Metric icon={<Archive size={24} />} label="Project Data" value={`${metrics.storageUsedGb.toFixed(1)} GB`} tone="blue" />
+          <Metric icon={<Database size={24} />} label="Total Objects" value={metrics.total} tone="violet" />
+          <Metric icon={<FolderKanban size={24} />} label="Projects" value={metrics.projects} tone="green" />
+          <Metric icon={<Power size={24} />} label="PowerShell Operators" value={metrics.operators} tone="cyan" />
+          <Metric icon={<Building2 size={24} />} label="City Hall Objects" value={metrics.cityHall} tone="blue" />
+          <Metric icon={<Pin size={24} />} label="Pinned" value={metrics.pinned} tone="orange" />
+          <Metric icon={<Layers3 size={24} />} label="Attention Signals" value={metrics.attention} tone="blue" />
         </section>
 
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -457,17 +312,16 @@ export function App() {
             )}
           </div>
           <section className="board">
-            {columns.map((column) => {
-              const columnProjects = projects
-                .filter((project) => project.status === column.id)
-                .sort((a, b) => a.cardOrder - b.cardOrder);
+            {lanes.map((lane) => {
+              const laneObjects = objects.filter((object) => object.board.lane === lane.id).sort((a, b) => a.cardOrder - b.cardOrder);
               return (
-                <SortableContext items={columnProjects.map((project) => project.id)} strategy={verticalListSortingStrategy} key={column.id}>
+                <SortableContext items={laneObjects.map((object) => object.id)} strategy={verticalListSortingStrategy} key={lane.id}>
                   <BoardColumnView
-                    column={column}
-                    projects={columnProjects}
-                    selectedProjectId={selectedProject?.id ?? null}
-                    onSelectProject={setSelectedProjectId}
+                    lane={lane}
+                    objects={laneObjects}
+                    selectedObjectId={selectedObject?.id ?? null}
+                    onSelectObject={setSelectedObjectId}
+                    onNewObject={openNewObject}
                     hasActiveFilters={hasFilters}
                     tagDefinitions={data.tagDefinitions}
                   />
@@ -478,156 +332,54 @@ export function App() {
         </DndContext>
 
         <footer className="workspace-footer">
-          <span>Active Sprint: May 6 - May 19, 2026</span>
-          <div className="progress-track">
-            <span style={{ width: "48%" }} />
-          </div>
+          <span>Database is the system of record</span>
+          <span>Board placement is projection only</span>
           <span>Showing: {filterSummary}</span>
-          {sourceFilter === "live" && <span>Live projects only</span>}
-          {sourceFilter === "sample" && <span>Sample data only</span>}
-          {readyOnly && <span>{metrics.releaseBlocked} blocked | {metrics.missingEvidence} missing evidence</span>}
           <span>{activeBoard.name}</span>
-          <button
-            onClick={() => {
-              setNewCard((card) => ({ ...card, boardId: activeBoard.id }));
-              setShowNewCard((value) => !value);
-            }}
-          >
+          <button onClick={() => openNewObject()}>
             <Plus size={15} />
-            New Card
+            New Object
           </button>
         </footer>
-        {showNewCard && (
-          <section className="new-card-panel">
-            <label>
-              Name
-              <input value={newCard.name} onChange={(event) => setNewCard({ ...newCard, name: event.target.value })} />
-            </label>
-            <label>
-              Board
-              <select value={newCard.boardId} onChange={(event) => setNewCard({ ...newCard, boardId: event.target.value as BoardId })}>
-                {boards.map((board) => (
-                  <option key={board.id} value={board.id}>
-                    {board.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              DB
-              <select value={newCard.dbId} onChange={(event) => setNewCard({ ...newCard, dbId: event.target.value as ProjectInput["dbId"] })}>
-                {projectDbs.map((db) => (
-                  <option key={db.id} value={db.id}>
-                    {db.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Availability
-              <select
-                value={newCard.availability ?? "available"}
-                onChange={(event) => setNewCard({ ...newCard, availability: event.target.value as ProjectInput["availability"] })}
-              >
-                <option value="available">Available</option>
-                <option value="unreachable">Unreachable</option>
-              </select>
-            </label>
-            <label>
-              Status
-              <select value={newCard.status} onChange={(event) => setNewCard({ ...newCard, status: event.target.value as ProjectStatus })}>
-                {columns.map((column) => (
-                  <option key={column.id} value={column.id}>
-                    {statusLabels[column.id]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Priority
-              <select value={newCard.priority} onChange={(event) => setNewCard({ ...newCard, priority: event.target.value as Project["priority"] })}>
-                <option value="P1">P1</option>
-                <option value="P2">P2</option>
-                <option value="P3">P3</option>
-                <option value="P4">P4</option>
-              </select>
-            </label>
-            <label className="full-field">
-              Tags
-              <input
-                value={newCard.tags.join(", ")}
-                onChange={(event) =>
-                  setNewCard({
-                    ...newCard,
-                    tags: event.target.value
-                      .split(",")
-                      .map((tag) => tag.trim())
-                      .filter(Boolean),
-                  })
-                }
-              />
-            </label>
-            <label className="full-field">
-              Description
-              <textarea value={newCard.description} onChange={(event) => setNewCard({ ...newCard, description: event.target.value })} />
-            </label>
-            <button className="secondary-button" onClick={() => setShowNewCard(false)}>
-              Cancel
-            </button>
-            <button className="primary-button" onClick={submitNewCard} disabled={!newCard.name.trim() || createProjectMutation.isPending}>
-              <Plus size={16} />
-              Create Card
-            </button>
-          </section>
+        {showNewObject && (
+          <NewObjectPanel
+            activeBoardId={activeBoard.id}
+            initialLaneId={newObjectLane ?? lanes.find((lane) => !lane.placeholder)?.id ?? "project-1"}
+            onCancel={() => setShowNewObject(false)}
+            onCreate={(input) => createMutation.mutate(input)}
+            isCreating={createMutation.isPending}
+          />
         )}
       </main>
 
-      <aside className={`right-panel ${compareProject ? "has-comparison" : ""}`}>
-        {selectedProject && (
-          <ProjectInspector
-            project={selectedProject}
+      <aside className={`right-panel ${compareObject ? "has-comparison" : ""}`}>
+        {selectedObject && (
+          <ObjectInspector
+            object={selectedObject}
             boards={boards}
-            projectDbs={projectDbs}
             tagDefinitions={data.tagDefinitions}
-            onUpdateProjectBasics={(update) => {
-              basicsMutation.mutate(update);
-              if (update.boardId !== activeBoardId) {
-                setActiveBoardId(update.boardId);
-                setCompareProjectId(null);
+            onUpdateObject={(update) => {
+              updateMutation.mutate(update);
+              if (update.board.board !== activeBoardId) {
+                setActiveBoardId(update.board.board);
+                setCompareObjectId(null);
               }
             }}
-            onUpdateProjectSetup={(projectId, setup) => setupMutation.mutate({ projectId, setup })}
-            onUpdateRelease={(release) => releaseMutation.mutate(release)}
-            onGenerateReceipt={(projectId, releaseId) => receiptMutation.mutate({ projectId, releaseId })}
-            onCreateRequirement={(projectId) => createRequirementMutation.mutate(projectId)}
-            onUpdateRequirement={(requirement) => updateRequirementMutation.mutate(requirement)}
-            onDeleteRequirement={(projectId, requirementId) => deleteRequirementMutation.mutate({ projectId, requirementId })}
-            onUpdateTagDefinition={(tagDefinition) => tagDefinitionMutation.mutate(tagDefinition)}
-            isPinnedForCompare={compareProjectId === selectedProject.id}
-            onPinCompare={setCompareProjectId}
-            onClearCompare={() => setCompareProjectId(null)}
-            isGeneratingReceipt={receiptMutation.isPending}
+            isPinnedForCompare={compareObjectId === selectedObject.id}
+            onPinCompare={setCompareObjectId}
+            onClearCompare={() => setCompareObjectId(null)}
           />
         )}
-        {compareProject && (
-          <ProjectInspector
-            project={compareProject}
+        {compareObject && (
+          <ObjectInspector
+            object={compareObject}
             boards={boards}
-            projectDbs={projectDbs}
             tagDefinitions={data.tagDefinitions}
-            onUpdateProjectBasics={(update) => basicsMutation.mutate(update)}
-            onUpdateProjectSetup={(projectId, setup) => setupMutation.mutate({ projectId, setup })}
-            onUpdateRelease={(release) => releaseMutation.mutate(release)}
-            onGenerateReceipt={(projectId, releaseId) => receiptMutation.mutate({ projectId, releaseId })}
-            onCreateRequirement={(projectId) => createRequirementMutation.mutate(projectId)}
-            onUpdateRequirement={(requirement) => updateRequirementMutation.mutate(requirement)}
-            onDeleteRequirement={(projectId, requirementId) => deleteRequirementMutation.mutate({ projectId, requirementId })}
-            onUpdateTagDefinition={(tagDefinition) => tagDefinitionMutation.mutate(tagDefinition)}
+            onUpdateObject={(update) => updateMutation.mutate(update)}
             compareMode
             isPinnedForCompare
-            onPinCompare={setCompareProjectId}
-            onClearCompare={() => setCompareProjectId(null)}
-            isGeneratingReceipt={receiptMutation.isPending}
+            onPinCompare={setCompareObjectId}
+            onClearCompare={() => setCompareObjectId(null)}
           />
         )}
       </aside>
@@ -640,35 +392,19 @@ function Metric({
   label,
   value,
   tone,
-  active = false,
-  onClick,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string | number;
   tone: string;
-  active?: boolean;
-  onClick?: () => void;
 }) {
-  const content = (
-    <>
+  return (
+    <article className="metric-card">
       <div className={`metric-icon tone-${tone}`}>{icon}</div>
       <div>
         <strong>{value}</strong>
         <span>{label}</span>
       </div>
-    </>
-  );
-  if (onClick) {
-    return (
-      <button className={`metric-card metric-button ${active ? "active" : ""}`} onClick={onClick}>
-        {content}
-      </button>
-    );
-  }
-  return (
-    <article className="metric-card">
-      {content}
     </article>
   );
 }

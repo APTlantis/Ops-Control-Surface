@@ -1,6 +1,6 @@
 import appIconUrl from "../src-tauri/icons/Square44x44Logo.png";
 
-import { Project } from "./types";
+import { OperationalObject } from "./types";
 
 const logoModules = import.meta.glob("./assets/project-icons/*.webp", {
   eager: true,
@@ -30,7 +30,7 @@ function hashProjectId(value: string) {
   return hash;
 }
 
-export function iconForProject(project: Project) {
+export function iconForProject(project: OperationalObject) {
   const mapped = projectIconMap[project.id];
   if (mapped) return mapped;
   if (!projectLogos.length) return appIconUrl;
